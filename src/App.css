@@ -1,0 +1,15 @@
+.modal-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; background: rgba(16, 37, 28, .55); padding: 20px; }
+.modal { width: 100%; max-width: 420px; padding: 24px; border-radius: 14px; background: white; display: grid; gap: 10px; }
+.modal h3 { margin: 0 0 8px; }
+.modal label { font-size: 12px; font-weight: 700; color: #35483b; margin-top: 6px; }
+.modal input, .modal select { padding: 10px; border: 1px solid #dfe6df; border-radius: 8px; font-size: 13px; }
+.modal-actions { display: flex; gap: 10px; margin-top: 16px; }
+.modal-actions button { flex: 1; padding: 11px; border-radius: 8px; border: 0; font-weight: 700; }
+.modal-actions button[type="button"] { background: #eef3ee; color: #35483b; }
+.modal-actions button[type="submit"] { background: #16865f; color: white; }
+.modal-actions button:disabled { opacity: .5; }
+.modal .error { color: #c0392b; font-size: 12px; margin: 0; }
+.status-pill.pending   { color: #946719; background: #fff3d9; }
+.status-pill.confirmed { color: #147447; background: #e6f7eb; }
+.status-pill.cancelled { color: #a33b30; background: #ffedeb; }
+.status-pill.completed { color: #4677d4; background: #e9f0ff; }
