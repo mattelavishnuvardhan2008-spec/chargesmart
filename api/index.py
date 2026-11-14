@@ -7,10 +7,10 @@ from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
 from jose import jwt, JWTError
 
-ACCOUNT = os.environ["D1_ACCOUNT_ID"]
-DB      = os.environ["D1_DATABASE_ID"]
-TOKEN   = os.environ["D1_API_TOKEN"]
-SECRET  = os.environ["JWT_SECRET"]
+ACCOUNT = os.environ.get("D1_ACCOUNT_ID", "")
+DB      = os.environ.get("D1_DATABASE_ID", "")
+TOKEN   = os.environ.get("D1_API_TOKEN", "")
+SECRET  = os.environ.get("JWT_SECRET", "dev-secret")
 PROD    = os.environ.get("ENV", "prod") == "prod"
 ORIGIN  = os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173")
 D1_URL  = f"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT}/d1/database/{DB}/query"
@@ -20,11 +20,22 @@ app = FastAPI(title="ChargeSmart API")
 app.add_middleware(CORSMiddleware, allow_origins=[ORIGIN], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 async def d1(sql: str, params: list | None = None):
+    if not ACCOUNT or not DB or not TOKEN:
+        raise HTTPException(500, "Missing D1 environment variables")
     async with httpx.AsyncClient(timeout=20) as c:
-        r = await c.post(D1_URL, headers={"Authorization": f"Bearer {TOKEN}"}, json={"sql": sql, "params": params or []})
-    data = r.json()
-    if not data.get("success"): raise HTTPException(500, str(data.get("errors")))
-    return data["result"][0]["results"]
+        try:
+            r = await c.post(D1_URL, headers={"Authorization": f"Bearer {TOKEN}"}, json={"sql": sql, "params": params or []})
+            data = r.json()
+        except Exception as e:
+            raise HTTPException(500, f"Cloudflare connection failed: {str(e)}")
+    
+    if not data.get("success"):
+        raise HTTPException(500, f"Cloudflare API Error: {data.get('errors')}")
+    
+    try:
+        return data["result"][0]["results"]
+    except (IndexError, KeyError, TypeError):
+        return []
 
 @app.get("/api/health")
 async def health(): return {"ok": True}
@@ -47,7 +58,10 @@ async def signup(b: SignupIn, resp: Response):
     if b.role not in ("customer", "admin"): raise HTTPException(400, "bad role")
     if len(b.password) < 6: raise HTTPException(400, "password too short")
     if await d1("SELECT id FROM users WHERE email=?", [b.email]): raise HTTPException(409, "email already registered")
-    row = (await d1("INSERT INTO users (email,password_hash,role) VALUES (?,?,?) RETURNING id,role", [b.email, pwd.hash(b.password), b.role]))[0]
+    try:
+        row = (await d1("INSERT INTO users (email,password_hash,role) VALUES (?,?,?) RETURNING id,role", [b.email, pwd.hash(b.password), b.role]))[0]
+    except Exception as e:
+        raise HTTPException(500, f"Insert failed: {str(e)}")
     issue(resp, row["id"], row["role"])
     return {"ok": True, "role": row["role"]}
 
@@ -66,9 +80,15 @@ async def logout(resp: Response):
 async def current(req: Request):
     tok = req.cookies.get("auth")
     if not tok: raise HTTPException(401, "not logged in")
-    try: p = jwt.decode(tok, SECRET, algorithms=["HS256"])
-    except JWTError: raise HTTPException(401, "invalid token")
-    rows = await d1("SELECT id,email,role FROM users WHERE id=?", [p["sub"]])
+    try: 
+        p = jwt.decode(tok, SECRET, algorithms=["HS256"])
+    except JWTError: 
+        raise HTTPException(401, "invalid token")
+    
+    uid = p.get("sub")
+    if not uid: raise HTTPException(401, "invalid token payload")
+    
+    rows = await d1("SELECT id,email,role FROM users WHERE id=?", [uid])
     if not rows: raise HTTPException(401, "user not found")
     return rows[0]
 
