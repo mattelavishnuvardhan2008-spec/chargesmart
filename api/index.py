@@ -4,7 +4,7 @@ import httpx
 from fastapi import FastAPI, Depends, HTTPException, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
-import jwt
+from jose import jwt, JWTError
 import bcrypt
 
 ACCOUNT = os.environ.get("D1_ACCOUNT_ID", "")
@@ -89,7 +89,7 @@ async def current(req: Request):
     if not tok: raise HTTPException(401, "not logged in")
     try: 
         p = jwt.decode(tok, SECRET, algorithms=["HS256"])
-    except jwt.PyJWTError: 
+    except JWTError: 
         raise HTTPException(401, "invalid token")
     
     uid = p.get("sub")
