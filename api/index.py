@@ -4,8 +4,8 @@ import httpx
 from fastapi import FastAPI, Depends, HTTPException, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
-from passlib.context import CryptContext
-from jose import jwt, JWTError
+import jwt
+import bcrypt
 
 ACCOUNT = os.environ.get("D1_ACCOUNT_ID", "")
 DB      = os.environ.get("D1_DATABASE_ID", "")
@@ -15,7 +15,6 @@ PROD    = os.environ.get("ENV", "prod") == "prod"
 ORIGIN  = os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173")
 D1_URL  = f"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT}/d1/database/{DB}/query"
 
-pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
 app = FastAPI(title="ChargeSmart API")
 app.add_middleware(CORSMiddleware, allow_origins=[ORIGIN], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
@@ -58,8 +57,11 @@ async def signup(b: SignupIn, resp: Response):
     if b.role not in ("customer", "admin"): raise HTTPException(400, "bad role")
     if len(b.password) < 6: raise HTTPException(400, "password too short")
     if await d1("SELECT id FROM users WHERE email=?", [b.email]): raise HTTPException(409, "email already registered")
+    
+    hashed = bcrypt.hashpw(b.password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    
     try:
-        row = (await d1("INSERT INTO users (email,password_hash,role) VALUES (?,?,?) RETURNING id,role", [b.email, pwd.hash(b.password), b.role]))[0]
+        row = (await d1("INSERT INTO users (email,password_hash,role) VALUES (?,?,?) RETURNING id,role", [b.email, hashed, b.role]))[0]
     except Exception as e:
         raise HTTPException(500, f"Insert failed: {str(e)}")
     issue(resp, row["id"], row["role"])
@@ -68,7 +70,12 @@ async def signup(b: SignupIn, resp: Response):
 @app.post("/api/auth/login")
 async def login(b: LoginIn, resp: Response):
     rows = await d1("SELECT id,password_hash,role FROM users WHERE email=?", [b.email])
-    if not rows or not pwd.verify(b.password, rows[0]["password_hash"]): raise HTTPException(401, "invalid credentials")
+    if not rows: raise HTTPException(401, "invalid credentials")
+    try:
+        if not bcrypt.checkpw(b.password.encode('utf-8'), rows[0]["password_hash"].encode('utf-8')):
+            raise HTTPException(401, "invalid credentials")
+    except Exception:
+        raise HTTPException(401, "invalid credentials")
     issue(resp, rows[0]["id"], rows[0]["role"])
     return {"ok": True, "role": rows[0]["role"]}
 
@@ -82,7 +89,7 @@ async def current(req: Request):
     if not tok: raise HTTPException(401, "not logged in")
     try: 
         p = jwt.decode(tok, SECRET, algorithms=["HS256"])
-    except JWTError: 
+    except jwt.PyJWTError: 
         raise HTTPException(401, "invalid token")
     
     uid = p.get("sub")
