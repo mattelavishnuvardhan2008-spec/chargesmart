@@ -16,6 +16,7 @@ export const api = {
   me: () => request("/api/auth/me"),
   stations: () => request("/api/stations"),
   recommendations: () => request("/api/recommendations"),
+  discovery: () => request("/api/discovery/stations"), 
   myBookings: () => request("/api/bookings/me"),
   createBooking: (b) => request("/api/bookings", { method: "POST", body: JSON.stringify(b) }),
   cancelBooking: (id) => request(`/api/bookings/${id}/cancel`, { method: "POST" }),
@@ -23,4 +24,6 @@ export const api = {
   operatorStations: () => request("/api/operator/stations"),
   operatorBookings: () => request("/api/operator/bookings"),
   analytics: () => request("/api/operator/analytics"),
+  createStation: (b) => request("/api/operator/stations", { method: "POST", body: JSON.stringify(b) }),
+  deleteStation: (id) => request(`/api/operator/stations/${id}`, { method: "DELETE" }),
 };
