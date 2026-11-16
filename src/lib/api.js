@@ -1,4 +1,5 @@
 const BASE = import.meta.env.VITE_API_URL ?? "";
+
 async function request(path, options = {}) {
   const res = await fetch(`${BASE}${path}`, {
     credentials: "include",
@@ -9,6 +10,7 @@ async function request(path, options = {}) {
   if (!res.ok) throw new Error(body.detail || res.statusText || "request failed");
   return body;
 }
+
 export const api = {
   signup: (b) => request("/api/auth/signup", { method: "POST", body: JSON.stringify(b) }),
   login: (b) => request("/api/auth/login", { method: "POST", body: JSON.stringify(b) }),
