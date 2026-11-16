@@ -7,9 +7,25 @@ export default function UserDashboard() {
   const [stations, setStations] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [sessions, setSessions] = useState([]);
-  useEffect(() => { Promise.all([api.stations(), api.myBookings(), api.history()]).then(([s, b, h]) => { setStations(s); setBookings(b); setSessions(h); }).catch(console.error); }, []);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([api.stations(), api.myBookings(), api.history()])
+      .then(([s, b, h]) => { setStations(s); setBookings(b); setSessions(h); })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div className="spinner"></div>;
+
   const available = stations.filter((s) => s.available_ports > 0).length;
-  const cards = [{ title: "Find Charging Stations", text: `${available} stations have available ports.`, to: "/user/stations", icon: MapPin },{ title: "My Bookings", text: "View your reservations.", to: "/user/bookings", icon: CalendarDays },{ title: "Charging History", text: "Review past sessions and costs.", to: "/user/history", icon: History },{ title: "AI Recommendations", text: "Explore intelligent charging.", to: "/user/recommendations", icon: BrainCircuit }];
+  const cards = [
+    { title: "Find Charging Stations", text: `${available} stations have available ports.`, to: "/user/stations", icon: MapPin },
+    { title: "My Bookings", text: "View your reservations.", to: "/user/bookings", icon: CalendarDays },
+    { title: "Charging History", text: "Review past sessions and costs.", to: "/user/history", icon: History },
+    { title: "AI Recommendations", text: "Explore intelligent charging.", to: "/user/recommendations", icon: BrainCircuit },
+  ];
+
   return (
     <div className="page-container">
       <div className="page-heading"><p className="eyebrow">CUSTOMER PORTAL</p><h1>Welcome to ChargeSmart</h1><p>Plan your charging journey from one place.</p></div>
