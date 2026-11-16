@@ -148,6 +148,34 @@ async def op_stations(u=Depends(current)):
     for s in rows: s["ports"] = await d1("SELECT id,label,status FROM ports WHERE station_id=?", [s["id"]])
     return rows
 
+class StationIn(BaseModel):
+    name: str
+    city: str
+    address: str
+    charger_type: str
+    power_kw: float
+    price_per_kwh: float
+    total_ports: int = 1
+
+@app.post("/api/operator/stations")
+async def op_create(b: StationIn, u=Depends(current)):
+    admin_only(u)
+    row = (await d1("""
+        INSERT INTO stations (operator_id,name,city,address,charger_type,power_kw,price_per_kwh,total_ports)
+        VALUES (?,?,?,?,?,?,?,?) RETURNING *""",
+        [u["id"], b.name, b.city, b.address, b.charger_type, b.power_kw, b.price_per_kwh, b.total_ports]))[0]
+    for i in range(b.total_ports):
+        await d1("INSERT INTO ports (station_id,label,status) VALUES (?,?,?)",
+                 [row["id"], f"A{i+1}", "available"])
+    return row
+
+@app.delete("/api/operator/stations/{sid}")
+async def op_delete(sid: int, u=Depends(current)):
+    admin_only(u)
+    if not await d1("DELETE FROM stations WHERE id=? RETURNING id", [sid]):
+        raise HTTPException(404, "station not found")
+    return {"ok": True}
+
 @app.get("/api/operator/bookings")
 async def op_bookings(u=Depends(current)):
     admin_only(u)
@@ -163,3 +191,30 @@ async def op_analytics(u=Depends(current)):
     e=(await d1("SELECT COALESCE(SUM(energy_kwh),0) AS n FROM charging_sessions"))[0]["n"]
     f=(await d1("SELECT COALESCE(SUM(cost),0) AS n FROM charging_sessions"))[0]["n"]
     return {"station_count":a,"total_ports":b,"free_ports":c,"bookings_count":d,"energy":e,"cost":f}
+
+@app.get("/api/discovery/stations")
+async def discover_stations():
+    url = "https://api.openchargemap.io/v3/poi/?output=json&countrycode=IN&maxresults=15"
+    async with httpx.AsyncClient(timeout=20) as c:
+        try:
+            r = await c.get(url)
+            data = r.json()
+            stations = []
+            for item in data:
+                info = item.get("AddressInfo", {})
+                if not info: continue
+                stations.append({
+                    "id": f"OCM-{item['ID']}",
+                    "name": info.get("Title", "Unknown Station"),
+                    "city": info.get("Town", "Unknown City"),
+                    "address": info.get("AddressLine1", "No Address"),
+                    "charger_type": "Public (External)",
+                    "power_kw": 22,
+                    "price_per_kwh": "N/A",
+                    "total_ports": item.get("NumberOfPoints", 1),
+                    "available_ports": 0,
+                    "is_external": True
+                })
+            return stations
+        except Exception as e:
+            raise HTTPException(500, f"Open Charge Map error: {str(e)}")
